@@ -20,11 +20,17 @@ namespace FishNet.Example.Prediction.Rigidbodies
             public bool Jump;
             public float Horizontal;
             public float Vertical;
-            public MoveData(bool jump, float horizontal, float vertical)
+            public bool Rotate;
+            public float RotY;
+            public Quaternion NewRot;
+            public MoveData(bool jump, bool rotate, float horizontal, float vertical, float rotY, Quaternion newRot)
             {
                 Jump = jump;
+                Rotate = rotate;
                 Horizontal = horizontal;
                 Vertical = vertical;
+                RotY = rotY;
+                NewRot = newRot;
             }
         }
         public struct ReconcileData
@@ -58,7 +64,11 @@ namespace FishNet.Example.Prediction.Rigidbodies
         [SerializeField]
         private LayerMask groundMask;
 
+        [SerializeField] private float sensitivity;
 
+        [SerializeField] private float rotSpeed;
+
+        [SerializeField] private CamController camScript;
         #endregion
 
         #region Private.
@@ -78,12 +88,33 @@ namespace FishNet.Example.Prediction.Rigidbodies
         private float horizontal;
         private float vertical;
 
+        private Quaternion newRot;
+
+        private bool rotate;
+
+        private Camera cam;
+
+        private Vector3 hitPoint;
+        private Vector3 hitNormal;
+
         #endregion
 
+        float rotY = 0f;
+
+
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            if (base.IsOwner)
+            {
+                cam = Camera.main;
+            }
+
+        }
 
         private void Awake()
         {
-
+            newRot = transform.rotation;
             _rigidbody = GetComponent<Rigidbody>();
             InstanceFinder.TimeManager.OnTick += TimeManager_OnTick;
             InstanceFinder.TimeManager.OnPostTick += TimeManager_OnPostTick;
@@ -97,19 +128,45 @@ namespace FishNet.Example.Prediction.Rigidbodies
                 InstanceFinder.TimeManager.OnPostTick -= TimeManager_OnPostTick;
             }
         }
+        private void Teleport()
+        {
+            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+            RaycastHit hit;
+
+            if (Input.GetKeyDown(KeyCode.F))
+            {
+                if (Physics.Raycast(ray, out hit, 200))
+                {
+                    hitPoint = hit.point;
+                    hitNormal = hit.normal;
+                    rotate = true;
+                }
+            }
+       
+        }
+
 
         private void Update()
         {
             if (base.IsOwner)
             {
+               
                 if (Input.GetKeyDown(KeyCode.Space) && Time.time > _nextJumpTime)
                 {
                     _nextJumpTime = Time.time + 1f;
                     _jump = true;
                 }
 
-                isGrounded = Physics.CheckSphere(groundCheck.position, 0.50f, groundMask);
+                Teleport();
+
+                
+
             }
+        }
+
+        private void GroundCheck()
+        {
+            isGrounded = Physics.CheckSphere(groundCheck.position, 0.50f, groundMask);
         }
 
         private void TimeManager_OnTick()
@@ -142,19 +199,36 @@ namespace FishNet.Example.Prediction.Rigidbodies
 
             horizontal = Input.GetAxisRaw("Horizontal");
             vertical = Input.GetAxisRaw("Vertical");
+            rotY += Input.GetAxis("Mouse X");
 
-            if (horizontal == 0f && vertical == 0f && !_jump)
+            if (horizontal == 0f && vertical == 0f && !_jump && !rotate && rotY == 0)
                 return;
 
-            md = new MoveData(_jump, horizontal, vertical);
+          
+
+            md = new MoveData(_jump, rotate, horizontal, vertical, rotY, newRot);
             _jump = false;
+            rotate = false;
         }
 
         [Replicate]
         private void Move(MoveData md, bool asServer, bool replaying = false)
         {
-            _rigidbody.AddForce((transform.forward * vertical) * _moveRate);
-            _rigidbody.AddForce((transform.right * horizontal) * _moveRate);
+            if (md.Rotate)
+            {
+                newRot = Quaternion.FromToRotation(transform.up, hitNormal) * transform.rotation;
+            }
+
+            GroundCheck();
+
+            _rigidbody.AddForce((transform.forward * md.Vertical) * _moveRate);
+            _rigidbody.AddForce((transform.right * md.Horizontal) * _moveRate);
+            transform.rotation = newRot * Quaternion.Euler(0, md.RotY * sensitivity, 0);
+
+            if (md.Rotate)
+            {
+                _rigidbody.position = hitPoint;
+            }
 
             if (!isGrounded)
             {
