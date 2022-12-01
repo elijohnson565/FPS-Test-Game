@@ -22,15 +22,15 @@ namespace FishNet.Example.Prediction.Rigidbodies
             public float Vertical;
             public bool Rotate;
             public float RotY;
-            public Quaternion NewRot;
-            public MoveData(bool jump, bool rotate, float horizontal, float vertical, float rotY, Quaternion newRot)
+   
+            public MoveData(bool jump, bool rotate, float horizontal, float vertical, float rotY)
             {
                 Jump = jump;
                 Rotate = rotate;
                 Horizontal = horizontal;
                 Vertical = vertical;
                 RotY = rotY;
-                NewRot = newRot;
+         
             }
         }
         public struct ReconcileData
